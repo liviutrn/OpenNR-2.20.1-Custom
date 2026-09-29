@@ -2,6 +2,10 @@
 
 Clean custom-build workspace based exclusively on upstream OpenNR 2.20.1.
 
+## Current baseline
+
+`2.20.1-v00` — clean baseline, no custom OpenNR code modifications.
+
 ## Versioning
 
 - `2.20.1-v00` — clean baseline, no custom OpenNR code modifications.

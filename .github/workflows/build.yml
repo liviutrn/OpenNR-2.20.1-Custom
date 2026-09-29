@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     name: Build custom OpenNR package
-    runs-on: windows-2022
+    runs-on: windows-2025
 
     steps:
       - name: Check out custom version repository
@@ -144,6 +144,36 @@ jobs:
           $p = $p.Replace($hashLine, $hashReplacement)
           Set-Content -Path $packageValidator -Value $p -NoNewline
 
+      - name: Stabilize pinned FidelityFX DX11 FI shader generation
+        shell: pwsh
+        run: |
+          $cmakePath = Join-Path $env:GITHUB_WORKSPACE "source/runtime/open-shaders/extern/FidelityFX-SDK/sdk/src/backends/dx11/CMakeLists.txt"
+          $text = Get-Content $cmakePath -Raw
+
+          $loopNeedle = "`tforeach(PASS_SHADER `${SHADER_FILES})"
+          if (-not $text.Contains($loopNeedle)) { throw "Could not locate FidelityFX DX11 shader loop" }
+          $loopReplacement = @'
+          	foreach(PASS_SHADER ${SHADER_FILES})
+          		# The DX11 frame-interpolation blob accessor ignores the ALLOW_FP16
+          		# selector and always returns the normal/wave64 shader blobs. The
+          		# pinned FidelityFX_SC crashes while generating those otherwise-unused
+          		# FFX_HALF=1 cs_5_0 headers on current Windows runners. Keep their
+          		# expected symbol/header names but compile their payload as FP32.
+          		set(OPENNR_DX11_HALF_VALUE 1)
+          		if(PASS_SHADER MATCHES "[/\\\\]frameinterpolation[/\\\\]")
+          			set(OPENNR_DX11_HALF_VALUE 0)
+          		endif()
+          '@
+          $text = $text.Replace($loopNeedle, $loopReplacement.TrimEnd("`r", "`n"))
+
+          $oldHalf = '-DFFX_HALF=1 -T cs_5_0'
+          $newHalf = '-DFFX_HALF=${OPENNR_DX11_HALF_VALUE} -T cs_5_0'
+          $count = ([regex]::Matches($text, [regex]::Escape($oldHalf))).Count
+          if ($count -ne 4) { throw "Expected four DX11 FP16 generation commands, found $count" }
+          $text = $text.Replace($oldHalf, $newHalf)
+          Set-Content -Path $cmakePath -Value $text -NoNewline
+          Write-Host "FidelityFX DX11 FI FP16 generation redirected to FP32 fallback; all other effects unchanged."
+
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -194,6 +224,7 @@ jobs:
           Upstream base: OpenNR 2.20.1
           Upstream commit: 9b6340870f3910d81917f167245885b50216654f
           Custom source patches: $patchList
+          CI compatibility adjustment: DX11 frame-interpolation FP16 headers use FP32 payload fallback because the pinned accessor ignores ALLOW_FP16 and current FidelityFX_SC crashes on those unused cs_5_0 variants.
 
           nvngx_dlssnr.dll is not included. Copy your own DLL to:
           Shaders/Upscaling/Streamline/nvngx_dlssnr.dll

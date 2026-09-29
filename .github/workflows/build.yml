@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     name: Build custom OpenNR package
-    runs-on: windows-2025
+    runs-on: windows-2022
 
     steps:
       - name: Check out custom version repository
@@ -173,7 +173,7 @@ jobs:
         run: |
           $dist = Join-Path $env:GITHUB_WORKSPACE "dist"
           cmake --preset OpenNR-Package "-DDIST_PATH=$dist"
-          cmake --build --preset Package --parallel
+          cmake --build --preset Package --parallel 1
 
       - name: Add version and build transparency files
         shell: pwsh
